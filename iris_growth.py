@@ -1,0 +1,140 @@
+"""
+Iris growth classifier
+Auteur : Louise ROBERT
+Description :
+Classifieur de variété d'iris selon des critères physiques comme la taille des pétales.
+"""
+
+import torch # pytorch pour le modèle de prédiction
+import torch.nn as nn # nn pour neural network, c'est notre réseau de neuronne
+import torch.optim as optim # optim pour l'optimiseur, c'est lui qui ajuste les résultats lors de l'entrainement pour apprendre
+from sklearn.model_selection import train_test_split # fonction permettant de couper le jeu de données en deux, pour l'entrainement et pour l'évaluation
+from sklearn.preprocessing import StandardScaler # Pour standardiser les données
+from sklearn.preprocessing import LabelEncoder # pour encoder mes labels de fleurs
+
+import matplotlib.pyplot as plt # pour la visualisation des données
+import seaborn as sns # seaborn est aussi pour la visualisation, mais en plus évolué
+import pandas as pd
+
+import datetime
+
+datas = pd.read_csv("dataset/iris/IRIS.csv")
+# print(type(dataframe['sepal_length']))
+
+X = datas[['sepal_length', 'sepal_width', 'petal_length', 'petal_width']]
+y = datas['species']
+
+### Standardisation des données
+
+X_scaler = StandardScaler()
+y_encoder = LabelEncoder()
+
+y = y_encoder.fit_transform(y)
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=67)
+
+X_scaler.fit(X_train)
+
+X_train = X_scaler.transform(X_train)
+X_test = X_scaler.transform(X_test)
+
+print(f"Taille du jeu de train : {X_train.shape}")
+print(f"Taille du jeu de test: {X_test.shape}")
+
+sns.violinplot(data=datas)
+# plt.show()
+
+
+### Convertir en tenseur pytorch
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # création du device pour exécuter ce code sur ma carte graphique
+
+X_train = torch.tensor(X_train, dtype=torch.float32).to(device)
+X_test = torch.tensor(X_test, dtype=torch.float32).to(device)
+y_train = torch.tensor(y_train, dtype=torch.long).to(device)
+y_test = torch.tensor(y_test, dtype=torch.long).to(device)
+
+class IrisIdentifier(nn.Module):
+    def __init__(self):
+        super(IrisIdentifier, self).__init__()
+
+        # Définition des couches du réseau
+        self.couche1 = nn.Linear(4, 8) # 4 parametres d'entrées vont donner 8 neuronnes cachés
+        self.couche2 = nn.Linear(8, 8) # Ces 8 neuronnes vont en donner 8 autres
+        self.couche3 = nn.Linear(8, 3) # Ces 8 neuronnes vont donner 3 sorties possibles (les 3 espèces d'iris possibles)
+
+        # Fonction d'activation
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        x = self.couche1(x)
+        x = self.relu(x)
+
+        x = self.couche2(x)
+        x = self.relu(x)
+
+        x = self.couche3(x)
+        ## Pas de relu car la fonction de loss s'en occupe automatiquement
+
+        return x
+    
+model = IrisIdentifier().to(device)
+
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.01)
+
+epochs = 1000
+model.train()
+
+for i in range(epochs):
+    optimizer.zero_grad()
+    output = model(X_train)
+    loss = criterion(output, y_train)
+
+    loss.backward()
+
+    optimizer.step()
+
+    if (i+1) % 50 == 0:
+        print(f"Époque {i+1}/{epochs}, Perte : {loss.item():.4f}")
+
+
+model.eval()
+
+with torch.no_grad():
+    y_pred = model(X_test)
+
+    predictions = torch.argmax(y_pred, dim=1)
+
+    accuracy = (predictions == y_test).float().mean()
+
+    test_loss = criterion(y_pred,y_test).item()
+
+    print(f"Précision sur l'évaluation : {accuracy:.2f}")
+    print(f"Perte sur l'évaluation : {test_loss:.4f}")
+
+    """
+Taille du jeu de train : (120, 4)
+Taille du jeu de test: (30, 4)
+Époque 50/1000, Perte : 0.2632
+Époque 100/1000, Perte : 0.0255
+Époque 150/1000, Perte : 0.0127
+Époque 200/1000, Perte : 0.0068
+Époque 250/1000, Perte : 0.0039
+Époque 300/1000, Perte : 0.0024
+Époque 350/1000, Perte : 0.0016
+Époque 400/1000, Perte : 0.0012
+Époque 450/1000, Perte : 0.0009
+Époque 500/1000, Perte : 0.0007
+Époque 550/1000, Perte : 0.0005
+Époque 600/1000, Perte : 0.0004
+Époque 650/1000, Perte : 0.0003
+Époque 700/1000, Perte : 0.0003
+Époque 750/1000, Perte : 0.0002
+Époque 800/1000, Perte : 0.0002
+Époque 850/1000, Perte : 0.0002
+Époque 900/1000, Perte : 0.0002
+Époque 950/1000, Perte : 0.0001
+Époque 1000/1000, Perte : 0.0001
+Précision sur l'évaluation : 0.87
+Perte sur l'évaluation : 1.0757 <== enorme overfitting car trop d'epoch pour un si petit dataset
+    """
