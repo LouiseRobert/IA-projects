@@ -7,6 +7,7 @@ Classifieur de variété d'iris selon des critères physiques comme la taille de
 
 import torch # pytorch pour le modèle de prédiction
 import torch.nn as nn # nn pour neural network, c'est notre réseau de neuronne
+import torch.nn.functional as F
 import torch.optim as optim # optim pour l'optimiseur, c'est lui qui ajuste les résultats lors de l'entrainement pour apprendre
 from sklearn.model_selection import train_test_split # fonction permettant de couper le jeu de données en deux, pour l'entrainement et pour l'évaluation
 from sklearn.preprocessing import StandardScaler # Pour standardiser les données
@@ -15,6 +16,7 @@ from sklearn.preprocessing import LabelEncoder # pour encoder mes labels de fleu
 import matplotlib.pyplot as plt # pour la visualisation des données
 import seaborn as sns # seaborn est aussi pour la visualisation, mais en plus évolué
 import pandas as pd
+import pickle # pour sauvegarder le scaler et l'encodeur
 
 import datetime
 
@@ -97,7 +99,7 @@ Il existe d'autres optimizers: SGD, RMSProp, AdamW
 """
 optimizer = optim.Adam(model.parameters(), lr=0.01)
 
-epochs = 1000
+epochs = 95
 model.train()
 
 for i in range(epochs):
@@ -112,7 +114,7 @@ for i in range(epochs):
     if (i+1) % 50 == 0:
         print(f"Époque {i+1}/{epochs}, Perte : {loss.item():.4f}")
 
-
+# évaluation
 model.eval()
 
 with torch.no_grad():
@@ -127,7 +129,54 @@ with torch.no_grad():
     print(f"Précision sur l'évaluation : {accuracy:.2f}")
     print(f"Perte sur l'évaluation : {test_loss:.4f}")
 
-    """
+
+# Enregistrement des poids du model
+torch.save(model.state_dict(), "iris_model.pth")
+
+# Enregistrement du scaler et de l'encodeur, pour pouvoir re normaliser mes futures données
+
+with open("iris_scaler.pkl", "wb") as f:
+    pickle.dump(X_scaler, f)
+
+with open("iris_encoder.pkl", "wb") as f:
+    pickle.dump(y_encoder, f)
+
+
+#### Réutilisation du modèle sauvegardé
+
+model2 = IrisIdentifier().to(device)
+model2.load_state_dict(torch.load("iris_model.pth"))
+model2.eval()
+
+with open("iris_scaler.pkl", "rb") as f:
+    X_scaler = pickle.load(f)
+
+with open("iris_encoder.pkl", "rb") as f:
+    y_encoder = pickle.load(f)
+
+# exemple:
+
+sample = [[5.1,3.5,1.4,0.2]] # double crochet car matrice 1x4
+
+sample_scaler = X_scaler.transform(sample) # standardisation des données sample
+sample_tensor = torch.tensor(sample_scaler, dtype=torch.float32).to(device) # transformation des données sample en tensor car c'est ça que comprend les modèles pytorch
+
+with torch.no_grad(): 
+    output = model2(sample_tensor) # prédiction avec le modèle sauvegardé
+    probabilites = F.softmax(output, dim=1) # convertit les scores en probabilités
+    prediction = torch.argmax(output, dim=1).item() 
+
+predicted_label = y_encoder.inverse_transform([prediction])[0]
+confiance = probabilites[0, prediction].item()
+
+print(f"L'iris prédit est : {predicted_label}")
+print(f"Confiance du modèle : {confiance*100:.2f}%")
+
+for i, variete in enumerate(y_encoder.classes_):
+    print(f"{variete} : {probabilites[0, i]*100:.2f}%")
+
+
+"""
 Taille du jeu de train : (120, 4)
 Taille du jeu de test: (30, 4)
 Époque 50/1000, Perte : 0.2632
@@ -152,4 +201,15 @@ Taille du jeu de test: (30, 4)
 Époque 1000/1000, Perte : 0.0001
 Précision sur l'évaluation : 0.87
 Perte sur l'évaluation : 1.0757 <== enorme overfitting car trop d'epoch pour un si petit dataset
-    """
+
+Taille du jeu de train : (120, 4)
+Taille du jeu de test: (30, 4)
+Époque 50/95, Perte : 0.2317
+Précision sur l'évaluation : 0.90
+Perte sur l'évaluation : 0.2011
+L'iris prédit est : Iris-setosa
+Confiance du modèle : 99.96%
+Iris-setosa : 99.96%
+Iris-versicolor : 0.04%
+Iris-virginica : 0.00%
+"""
