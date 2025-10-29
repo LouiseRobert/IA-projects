@@ -54,6 +54,11 @@ y_train = torch.tensor(y_train, dtype=torch.long).to(device)
 y_test = torch.tensor(y_test, dtype=torch.long).to(device)
 
 class IrisIdentifier(nn.Module):
+    """
+    On va définir 3 couches Linear (donc de régression linéaire) et une fonction ReLU (Rectified Linear Unit) qui n'est pas une fonction linéaire.
+    ReLU est une fonction d'activation
+    Dans Forward on altene Linear avec ReLU pour approximer une fonction non linéaire complexe.
+    """
     def __init__(self):
         super(IrisIdentifier, self).__init__()
 
@@ -79,7 +84,17 @@ class IrisIdentifier(nn.Module):
     
 model = IrisIdentifier().to(device)
 
+"""
+Notre criterion va calculer la quantification mathématique de l'erreur de notre modèle.
+CrossEntropyLoss est une fonction adaptée à la classification
+On aurait pu utiliser MSE (Mean Squared Error), MAE (Mean Absolute Error) ou Huber Loss (mélange MSE et MAE)
+"""
 criterion = nn.CrossEntropyLoss()
+
+"""
+L'optimizer va modifier les poids selon la Loss calculée 
+Il existe d'autres optimizers: SGD, RMSProp, AdamW
+"""
 optimizer = optim.Adam(model.parameters(), lr=0.01)
 
 epochs = 1000
