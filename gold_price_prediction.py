@@ -108,6 +108,9 @@ scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
+with open("scaler.pkl", "wb") as f:
+    pickle.dump(scaler,f)
+
 ### Convertir en Tenseurs
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 torch.manual_seed(42) # ???
@@ -130,26 +133,29 @@ class SimpleMLP(nn.Module):
         layers = []
 
         in_dim = n_features # entrées : nombre de colonnes de mon dataset
-        for h in hidden_sizes: # ???
+        for h in hidden_sizes: # Parcours des deux couches du réseau (une couche de 128 et une couche de 64 neuronnes)
             layers.append(nn.Linear(in_dim, h))
             layers.append(nn.ReLU())
-            layers.append(nn.Dropout(dropout)) # ???
+            layers.append(nn.Dropout(dropout)) # évite le surapprentissage. Désactive un petit % (ici 10%) de neuronnes pour éviter l'over fitting
             in_dim = h
         layers.append(nn.Linear(in_dim, 1))  # sortie : prix
-        self.net = nn.Sequential(*layers) # ???
+        self.net = nn.Sequential(*layers) # Permet d'enchainer toutes les couches du réseau 
     def forward(self, x):
         return self.net(x)
     
-model = SimpleMLP(n_features=Xtr.shape[1], hidden_sizes=[128,64], dropout=0.1).to(device)
+model = SimpleMLP(n_features=Xtr.shape[
+    1], hidden_sizes=[128,64], dropout=0.1).to(device)
 
 # Loss / Optimizer / Scheduler
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5) # ???
+
+# Scheduler d'apprentissage automatique, il réduit le learning rate de moitié si la validation loss ne s'améliore pas pendant 5 epoch
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5) 
 
 # Entrainement
 n_epochs = 60
-best_val_loss = float('inf') # ???
+best_val_loss = float('inf') # on initialise à l'infini pour considérer le premier modèle comme le meilleur.
 patience = 10
 patience_counter = 0
 
@@ -173,11 +179,12 @@ for epoch in range(1, n_epochs+1):
         for xb, yb in test_loader:
             xb, yb = xb.to(device), yb.to(device)
             pred = model(xb)
-            val_losses.append(criterion(pred, yb).item()) # ???
+            val_losses.append(criterion(pred, yb).item()) # on stocke toutes les losses pour en faire la moyenne plus tard
         avg_val = sum(val_losses)/len(val_losses)
     scheduler.step(avg_val)
     
-    if avg_val < best_val_loss - 1e-9: # ???
+    # Si la loss actuelle (moyenne) est meilleure que la loss précédente on sauve le modèle comme le meilleur
+    if avg_val < best_val_loss - 1e-9: # 
         best_val_loss = avg_val
         torch.save(model.state_dict(), "best_mlp.pth")
         patience_counter = 0
@@ -187,7 +194,7 @@ for epoch in range(1, n_epochs+1):
     if epoch % 5 == 0 or epoch == 1:
         print(f"Epoch {epoch:03d} | Train loss: {avg_train:.6f} | Val loss: {avg_val:.6f} | Best: {best_val_loss:.6f}")
     
-    if patience_counter >= patience: # ???
+    if patience_counter >= patience: # interrompt l'entrainement quand le modèle à appris tout ce qu'il pouvait
         print("Early stopping (patience dépassée)")
         break
 
@@ -208,23 +215,23 @@ print(f"Test MAPE: {mape:.4%}")
 print(f"Test R2: {r2:.4f}")
 
 # --- Plot prédictions vs vérité (test period) ---
-import matplotlib.pyplot as plt
-plt.figure(figsize=(12,6))
-plt.plot(y_test.index, y_test.values, label='True Close', linewidth=1)
-plt.plot(y_test.index, y_pred, label='Predicted Close (MLP)', linewidth=1)
-plt.title("Prédiction Close t+1 - Test set (MLP)")
-plt.xlabel("Date")
-plt.ylabel("Prix (USD)")
-plt.legend()
-plt.grid(True)
-plt.show()
+# import matplotlib.pyplot as plt
+# plt.figure(figsize=(12,6))
+# plt.plot(y_test.index, y_test.values, label='True Close', linewidth=1)
+# plt.plot(y_test.index, y_pred, label='Predicted Close (MLP)', linewidth=1)
+# plt.title("Prédiction Close t+1 - Test set (MLP)")
+# plt.xlabel("Date")
+# plt.ylabel("Prix (USD)")
+# plt.legend()
+# plt.grid(True)
+# plt.show()
 
 # --- Résidus / histogramme (optionnel) ---
-residuals = y_test.values - y_pred
-plt.figure(figsize=(10,4))
-plt.hist(residuals, bins=60)
-plt.title("Distribution des résidus (True - Pred)")
-plt.show()
+# residuals = y_test.values - y_pred
+# plt.figure(figsize=(10,4))
+# plt.hist(residuals, bins=60)
+# plt.title("Distribution des résidus (True - Pred)")
+# plt.show()
 
 """
 Epoch 001 | Train loss: 1975143.125000 | Val loss: 1891331.343750 | Best: 1891331.343750
