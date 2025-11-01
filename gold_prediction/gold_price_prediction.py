@@ -13,7 +13,7 @@ import torch.optim as optim # optim pour l'optimiseur, c'est lui qui ajuste les 
 from sklearn.model_selection import train_test_split # fonction permettant de couper le jeu de données en deux, pour l'entrainement et pour l'évaluation
 from sklearn.preprocessing import StandardScaler # Pour standardiser les données
 from sklearn.preprocessing import LabelEncoder # pour encoder mes labels de fleurs
-
+import numpy as np
 import matplotlib.pyplot as plt # pour la visualisation des données
 import seaborn as sns # seaborn est aussi pour la visualisation, mais en plus évolué
 import pandas as pd
@@ -21,11 +21,7 @@ import pickle # pour sauvegarder le scaler et l'encodeur
 
 import datetime
 
-datas = pd.read_csv("dataset/gold/Gold_Spot_historical_data.csv")
-
-# print(datas.shape)
-# print(datas.columns)
-# print(datas.tail())
+datas = pd.read_csv("../dataset/gold/Gold_Spot_historical_data.csv")
 
 # On convertis Date en datetime et on trie le dataset
 datas['Date'] = pd.to_datetime(datas['Date'], utc=True)
@@ -40,14 +36,6 @@ datas.set_index('Date', inplace=True)
 colonnes_numeriques = ['Open','High','Low','Close','Volume']
 datas[colonnes_numeriques] = datas[colonnes_numeriques].apply(pd.to_numeric, errors='coerce')
 
-# print("Avant dropna:", datas.shape)
-# datas = datas.dropna(subset=['Open','High','Low','Close'])
-# print("Après dropna:", datas.shape)
-
-# coup d'oeil
-# print(datas.tail())
-# print(datas.index.dtype)
-
 """
 sns.set_theme(style="darkgrid")
 plt.figure(figsize=(12,6))
@@ -60,47 +48,65 @@ plt.show()
 
 ### On crée notre label cible
 
-datas['Target'] = datas['Close'].shift(-5)   # target = prochaine clôture
+datas['Target'] = datas['Close'].shift(-1) - datas['Close']  # target = variation à 1 jours
 datas = datas.dropna(subset=['Target'])      # la dernière ligne n'a pas de target
 
 ### Feature engineering
 
 # Rendement
-datas['Return'] = datas['Close'].pct_change() 
+datas['Return'] = datas['Close'] .pct_change() 
 
 # Différences intra-journée
 datas['High_low_diff'] = datas['High'] - datas['Low']
-datas['Open_close_diff'] = datas['Open'] - datas['Close']
+datas['Open_close_diff'] = datas['Open'] - datas['Close'].shift(1)
 
 # Volatilité quotidienne relative
 datas['Volatility'] = (datas['High'] - datas['Low']) / datas['Open']
 
 # Moyennes mobiles
-datas['SMA_5'] = datas['Close'].rolling(window=5).mean()
-datas['SMA_10'] = datas['Close'].rolling(window=10).mean()
-datas['SMA_20'] = datas['Close'].rolling(window=20).mean()
+datas['SMA_5'] = datas['Close'].shift(1).rolling(window=5).mean()
+datas['SMA_10'] = datas['Close'].shift(1).rolling(window=10).mean()
+datas['SMA_20'] = datas['Close'].shift(1).rolling(window=20).mean()
 
 datas['Volume_MA_5'] = datas['Volume'].rolling(window=5).mean()
 
 # Indicateur basique
-datas['Close_minus_SMA10'] = datas['Close'] - datas['SMA_10']
+datas['Close_minus_SMA10'] = datas['Close'].shift(1) - datas['SMA_10']
 
+# On normalise en pourcentages
+datas['Open_pct'] = datas['Open'].pct_change()
+datas['High_pct'] = datas['High'].pct_change()
+datas['Low_pct'] = datas['Low'].pct_change()
+datas['Volume_pct'] = datas['Volume'].pct_change()
+
+# on remplace les infinis par des NaN
+datas.replace([np.inf, -np.inf], np.nan, inplace=True)
+# On supprime les NaN
 datas = datas.dropna()
 
 print(datas.shape)
 print(datas.columns)
 print(datas.tail())
 
+# les features que notre modèle va prendre en entrées
 features = [
-    'Open','High','Low','Volume',
+    'Open_pct','High_pct','Low_pct','Volume_pct',
     'Return','High_low_diff','Open_close_diff','Volatility',
     'SMA_5','SMA_10','SMA_20','Volume_MA_5','Close_minus_SMA10'
 ]
 
-X = datas[features].copy()
-y = datas['Target'].copy()
+# Split entrainement et validation selon une date (pour éviter le data leakage)
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+split_date = '2023-12-31'
+X_train = datas[datas.index <= split_date]
+X_test = datas[datas.index > split_date]
+
+y_train = X_train['Target']
+y_test = X_test['Target']
+
+# On garde les colonnes qui nous interessent
+X_train = X_train[features]
+X_test = X_test[features]
 
 ### Scaling (fit sur train uniquement)
 
@@ -108,25 +114,43 @@ scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
+# On normalise aussi sur la target
+target_scaler = StandardScaler()
+y_train_scaled = target_scaler.fit_transform(y_train.values.reshape(-1, 1))
+y_test_scaled = target_scaler.transform(y_test.values.reshape(-1, 1))
+
 with open("scaler.pkl", "wb") as f:
     pickle.dump(scaler,f)
 
 ### Convertir en Tenseurs
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-torch.manual_seed(42) # ???
+torch.manual_seed(42)
+torch.cuda.manual_seed_all(42)
 
 Xtr = torch.tensor(X_train_scaled, dtype=torch.float32)
-Ytr = torch.tensor(y_train.values, dtype=torch.float32).unsqueeze(1) # unsqueeze ???
+Ytr = torch.tensor(y_train_scaled, dtype=torch.float32)
+# Ytr = torch.tensor(y_train.values, dtype=torch.float32).unsqueeze(1) # ajoute 1 dimension au vecteur 1D y_train
 Xte = torch.tensor(X_test_scaled, dtype=torch.float32)
-Yte = torch.tensor(y_test.values, dtype=torch.float32).unsqueeze(1)
+# Yte = torch.tensor(y_test.values, dtype=torch.float32).unsqueeze(1)
+Yte = torch.tensor(y_test_scaled, dtype=torch.float32)
 
 batch_size = 64
 train_ds = TensorDataset(Xtr, Ytr)
 test_ds = TensorDataset(Xte, Yte)
-train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=False)
-test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
+train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=True)
 
 ### Création de mon modèle de réseau de neuronne
+## MLP : Multi Layer Perceptron
+# Réseau de neuronnes classique entièrement connecté (linear -> activation -> Dropout) et prend un vecteur de features en entrée
+# Mais ne sait pas capturer les dépendances temporelles longues
+# Fonctionne si les features encapsulent des données historiques comme des moyennes mobiles ou un rendement...
+
+# LSTM : Long Short-term Memory
+# Type de Recurrent Neural Network concu pour traiter les séries temporelles
+# Il prend en entrée une séquence et apprend à mémoriser l'ordre des données
+# Mais il est plus complexe à entrainer et est plus lent
+
 class SimpleMLP(nn.Module):
     def __init__(self, n_features, hidden_sizes=[128,64], dropout=0.1):
         super().__init__()
@@ -143,8 +167,7 @@ class SimpleMLP(nn.Module):
     def forward(self, x):
         return self.net(x)
     
-model = SimpleMLP(n_features=Xtr.shape[
-    1], hidden_sizes=[128,64], dropout=0.1).to(device)
+model = SimpleMLP(n_features=Xtr.shape[1], hidden_sizes=[256,128,64], dropout=0.1).to(device)
 
 # Loss / Optimizer / Scheduler
 criterion = nn.MSELoss()
@@ -153,10 +176,10 @@ optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
 # Scheduler d'apprentissage automatique, il réduit le learning rate de moitié si la validation loss ne s'améliore pas pendant 5 epoch
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5) 
 
-# Entrainement
+#### Entrainement
 n_epochs = 60
 best_val_loss = float('inf') # on initialise à l'infini pour considérer le premier modèle comme le meilleur.
-patience = 10
+patience = 20
 patience_counter = 0
 
 for epoch in range(1, n_epochs+1):
@@ -202,7 +225,9 @@ for epoch in range(1, n_epochs+1):
 model.load_state_dict(torch.load("best_mlp.pth", map_location=device))
 model.eval()
 with torch.no_grad():
-    y_pred = model(Xte.to(device)).cpu().numpy().squeeze()
+    # y_pred = model(Xte.to(device)).cpu().numpy().squeeze()
+    y_pred_scaled = model(Xte.to(device)).detach().cpu().numpy()
+    y_pred = target_scaler.inverse_transform(y_pred_scaled)
 
 # --- Évaluation (RMSE, MAPE, R2) ---
 from sklearn.metrics import root_mean_squared_error, mean_absolute_percentage_error, r2_score
@@ -210,9 +235,16 @@ rmse = root_mean_squared_error(y_test, y_pred)
 mape = mean_absolute_percentage_error(y_test, y_pred)
 r2 = r2_score(y_test, y_pred)
 
-print(f"Test RMSE: {rmse:.4f}")
-print(f"Test MAPE: {mape:.4%}")
-print(f"Test R2: {r2:.4f}")
+print(f"Test RMSE: en moyenne le modèle se trompe de {rmse:.4f} dollars sur la cible.")
+print(f"Test MAPE: en moyenne le modèle se trompe de {mape:.4%} par rapport à la cible.")
+print(f"Test R2 (mesure statistique de la qualité du modèle (1 = parfait, 0 = nul)): {r2:.4f}")
+
+plt.figure(figsize=(12,6))
+plt.plot(y_test.index, y_test.values, label='True')
+plt.plot(y_test.index, y_pred, label='Predicted')
+plt.legend()
+plt.title("True vs Predicted (Test Set)")
+plt.show()
 
 # --- Plot prédictions vs vérité (test period) ---
 # import matplotlib.pyplot as plt
@@ -285,4 +317,15 @@ Epoch 060 | Train loss: 10653.532882 | Val loss: 1698.694513 | Best: 1541.272723
 Test RMSE: 39.3043
 Test MAPE: 2.3813%
 Test R2: 0.9968
+
+Epoch 001 | Train loss: 1.008464 | Val loss: 7.086710 | Best: 7.086710
+Epoch 005 | Train loss: 0.992412 | Val loss: 6.247897 | Best: 6.247897
+Epoch 010 | Train loss: 0.967518 | Val loss: 7.079223 | Best: 6.247897
+Epoch 015 | Train loss: 0.924331 | Val loss: 7.441147 | Best: 6.247897
+Epoch 020 | Train loss: 0.888926 | Val loss: 6.810045 | Best: 6.247897
+Epoch 025 | Train loss: 0.871313 | Val loss: 6.740522 | Best: 6.247897
+Early stopping (patience dépassée)
+Test RMSE: en moyenne le modèle se trompe de 35.4754 dollars sur la cible.
+Test MAPE: en moyenne le modèle se trompe de 116.0347% par arpport à la cible.
+Test R2 (mesure statistique de la qualité du modèle (1 = parfait, 0 = nul)): -0.0038
 """
