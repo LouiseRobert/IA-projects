@@ -6,11 +6,15 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_percentage_error, r2_score
 import matplotlib.pyplot as plt
 import random
+import pickle
 torch.manual_seed(42)
 np.random.seed(42)
 random.seed(42)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(42)
+
+
+SEQ_LEN = 20
 
 # ---------------------------------------------------------------------
 # 1. Chargement et préparation des données
@@ -105,7 +109,7 @@ def create_sequences(X, y, seq_len=10):
         y_seq.append(y[i+seq_len])
     return np.array(X_seq), np.array(y_seq)
 
-SEQ_LEN = 10
+
 X_seq, y_seq = create_sequences(X_scaled, y_scaled, seq_len=SEQ_LEN)
 
 # Split train/test
@@ -191,6 +195,17 @@ r2 = r2_score(y_true, y_pred)
 print(f"Test RMSE: en moyenne le modèle se trompe de {rmse:.4f} dollars sur la cible.")
 print(f"Test MAPE: en moyenne le modèle se trompe de {mape:.2f}% par rapport à la cible.")
 print(f"Test R2 (mesure statistique de la qualité du modèle (1 = parfait, 0 = nul)): {r2:.4f}")
+
+# Sauvegarde des fichiers
+with open("ltsm_gold_model.pth", "wb") as f:
+    torch.save(model.state_dict(), f)
+
+with open("scaler_x.pkl", "wb") as f:
+    pickle.dump(scaler_X, f)
+
+with open("scaler_y.pkl", "wb") as f:
+    pickle.dump(scaler_y, f)
+
 
 # ---------------------------------------------------------------------
 # 6. Visualisation
