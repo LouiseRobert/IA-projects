@@ -16,6 +16,29 @@ if torch.cuda.is_available():
 
 SEQ_LEN = 20
 
+# Fonction pour calcul de l'inducateur RSI
+def rsi(close_series, window = 14):
+    """
+    Fonction de calcul du RSI.
+
+    :@param close_series: pandas.Series, colone des prix de cloture
+    :@param window: Int, Fenetre temporelle du calcul
+    :@return: pandas.Series, Relative Strength Index
+    """
+    # calcule la différence d'un jour à l'autre
+    delta = close_series.diff()
+
+    # On isole les jours positifs et les jours négatifs
+    gain = (delta.where(delta > 0, 0)).rolling(window).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window).mean()
+
+    # ratio
+    rs = gain / loss
+
+    rsi = 100 - (100 / (1 + rs))
+
+    return rsi
+
 # ---------------------------------------------------------------------
 # 1. Chargement et préparation des données
 # ---------------------------------------------------------------------
@@ -60,6 +83,8 @@ datas['Volume_MA_5'] = datas['Volume'].rolling(window=5).mean()
 # Indicateur basique
 datas['Close_minus_SMA10'] = datas['Close'].shift(1) - datas['SMA_10']
 
+datas['RSI'] = rsi(datas['Close'])
+
 # On normalise en pourcentages
 datas['Open_pct'] = datas['Open'].pct_change()
 datas['High_pct'] = datas['High'].pct_change()
@@ -79,7 +104,7 @@ print(datas.tail())
 features = [
     'Open_pct','High_pct','Low_pct','Volume_pct',
     'Return','High_low_diff','Open_close_diff','Volatility',
-    'SMA_5','SMA_10','SMA_20','Volume_MA_5','Close_minus_SMA10'
+    'SMA_5','SMA_10','SMA_20','Volume_MA_5','Close_minus_SMA10', 'RSI'
 ]
 
 # Suppose que ta colonne cible s'appelle 'Target' (prix de clôture de J+5)
@@ -155,7 +180,7 @@ model = LSTMModel(n_features).to(device)
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-EPOCHS = 60
+EPOCHS = 50
 for epoch in range(EPOCHS):
     model.train()
 
@@ -197,13 +222,13 @@ print(f"Test MAPE: en moyenne le modèle se trompe de {mape:.2f}% par rapport à
 print(f"Test R2 (mesure statistique de la qualité du modèle (1 = parfait, 0 = nul)): {r2:.4f}")
 
 # Sauvegarde des fichiers
-with open("ltsm_gold_model.pth", "wb") as f:
+with open("ltsm_gold_model_rsi.pth", "wb") as f:
     torch.save(model.state_dict(), f)
 
-with open("scaler_x.pkl", "wb") as f:
+with open("scaler_x_rsi.pkl", "wb") as f:
     pickle.dump(scaler_X, f)
 
-with open("scaler_y.pkl", "wb") as f:
+with open("scaler_y_rsi.pkl", "wb") as f:
     pickle.dump(scaler_y, f)
 
 
@@ -262,4 +287,14 @@ Epoch 050 | Train loss: 0.000831 | Val loss: 0.006128
 Test RMSE: en moyenne le modèle se trompe de 173.3215 dollars sur la cible.
 Test MAPE: en moyenne le modèle se trompe de 5.60% par rapport à la cible.
 Test R2 (mesure statistique de la qualité du modèle (1 = parfait, 0 = nul)): 0.9103
+
+Entrainement avec RSI:
+Epoch 000 | Train loss: 0.035486 | Val loss: 0.182498
+Epoch 010 | Train loss: 0.014199 | Val loss: 0.071479
+Epoch 020 | Train loss: 0.011327 | Val loss: 0.095845
+Epoch 030 | Train loss: 0.008330 | Val loss: 0.045628
+Epoch 040 | Train loss: 0.001164 | Val loss: 0.001055
+Test RMSE: en moyenne le modèle se trompe de 146.5278 dollars sur la cible.
+Test MAPE: en moyenne le modèle se trompe de 3.65% par rapport à la cible.
+Test R2 (mesure statistique de la qualité du modèle (1 = parfait, 0 = nul)): 0.9369
 """

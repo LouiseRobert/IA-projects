@@ -5,6 +5,33 @@ import torch.nn as nn
 import pickle
 
 SEQ_LEN = 20  # même longueur qu'à l'entraînement
+SCALER_X = "scaler_x_rsi.pkl"
+SCALER_Y = "scaler_y.pkl"
+MODEL = "ltsm_gold_model_rsi.pth"
+
+# Fonction pour calcul de l'inducateur RSI
+def rsi(close_series, window = 14):
+    """
+    Fonction de calcul du RSI.
+
+    :@param close_series: pandas.Series, colone des prix de cloture
+    :@param window: Int, Fenetre temporelle du calcul
+    :@return: pandas.Series, Relative Strength Index
+    """
+    # calcule la différence d'un jour à l'autre
+    delta = close_series.diff()
+
+    # On isole les jours positifs et les jours négatifs
+    gain = (delta.where(delta > 0, 0)).rolling(window).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window).mean()
+
+    # ratio
+    rs = gain / loss
+
+    rsi = 100 - (100 / (1 + rs))
+
+    return rsi
+
 
 # ---------------------------------------------------------------------
 # 1. Définir le modèle LSTM (même architecture qu'à l'entraînement)
@@ -29,17 +56,17 @@ class LSTMModel(nn.Module):
 # ---------------------------------------------------------------------
 # 2. Charger les scalers et le modèle
 # ---------------------------------------------------------------------
-with open("scaler_x.pkl", "rb") as f:
+with open(SCALER_X, "rb") as f:
     scaler_X = pickle.load(f)
 
-with open("scaler_y.pkl", "rb") as f:
+with open(SCALER_Y, "rb") as f:
     scaler_y = pickle.load(f)
 
-n_features = 13  # nombre de features que tu as utilisé
+n_features = 14  # nombre de features que tu as utilisé
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 model = LSTMModel(n_features).to(device)
-model.load_state_dict(torch.load("ltsm_gold_model.pth", map_location=device))
+model.load_state_dict(torch.load(MODEL, map_location=device))
 model.eval()
 
 # ---------------------------------------------------------------------
@@ -59,6 +86,7 @@ datas['SMA_5'] = datas['Close'].shift(1).rolling(window=5).mean()
 datas['SMA_10'] = datas['Close'].shift(1).rolling(window=10).mean()
 datas['SMA_20'] = datas['Close'].shift(1).rolling(window=20).mean()
 datas['Volume_MA_5'] = datas['Volume'].rolling(window=5).mean()
+datas['RSI'] = rsi(datas['Close'])
 datas['Close_minus_SMA10'] = datas['Close'].shift(1) - datas['SMA_10']
 datas['Open_pct'] = datas['Open'].pct_change()
 datas['High_pct'] = datas['High'].pct_change()
@@ -74,7 +102,7 @@ datas = datas.dropna()
 features = [
     'Open_pct','High_pct','Low_pct','Volume_pct',
     'Return','High_low_diff','Open_close_diff','Volatility',
-    'SMA_5','SMA_10','SMA_20','Volume_MA_5','Close_minus_SMA10'
+    'SMA_5','SMA_10','SMA_20','Volume_MA_5','Close_minus_SMA10', 'RSI'
 ]
 
 X = datas[features].values
