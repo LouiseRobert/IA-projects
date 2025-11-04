@@ -86,7 +86,7 @@ datas['SMA_5'] = datas['Close'].shift(1).rolling(window=5).mean()
 datas['SMA_10'] = datas['Close'].shift(1).rolling(window=10).mean()
 datas['SMA_20'] = datas['Close'].shift(1).rolling(window=20).mean()
 datas['Volume_MA_5'] = datas['Volume'].rolling(window=5).mean()
-datas['RSI'] = rsi(datas['Close'])
+datas['RSI'] = rsi(datas['Close'].shift(1))
 datas['Close_minus_SMA10'] = datas['Close'].shift(1) - datas['SMA_10']
 datas['Open_pct'] = datas['Open'].pct_change()
 datas['High_pct'] = datas['High'].pct_change()
@@ -108,6 +108,8 @@ features = [
 X = datas[features].values
 X_scaled = scaler_X.transform(X)
 
+print("Last sequence Close values:", datas['Close'].iloc[-SEQ_LEN:].values)
+
 # Créer la dernière séquence
 X_last_seq = X_scaled[-SEQ_LEN:]          # prend les 10 derniers jours
 X_last_seq = np.expand_dims(X_last_seq, axis=0)  # forme (1, seq_len, n_features)
@@ -118,6 +120,8 @@ X_last_seq_t = torch.tensor(X_last_seq, dtype=torch.float32).to(device)
 # ---------------------------------------------------------------------
 with torch.no_grad():
     y_pred_scaled = model(X_last_seq_t).cpu().numpy()
+    print(f"sorie brute du modele : {y_pred_scaled}")
+    print("scaler_y min/max:", scaler_y.data_min_, scaler_y.data_max_)
     y_pred = scaler_y.inverse_transform(y_pred_scaled)
 
 print(f"Prix prédit de l'or dans 5 jours : {y_pred[0,0]:.2f} dollars")

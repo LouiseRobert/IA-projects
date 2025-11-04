@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_percentage_error, r2_score
 import matplotlib.pyplot as plt
 import random
@@ -83,7 +83,7 @@ datas['Volume_MA_5'] = datas['Volume'].rolling(window=5).mean()
 # Indicateur basique
 datas['Close_minus_SMA10'] = datas['Close'].shift(1) - datas['SMA_10']
 
-datas['RSI'] = rsi(datas['Close'])
+datas['RSI'] = rsi(datas['Close'].shift(1))
 
 # On normalise en pourcentages
 datas['Open_pct'] = datas['Open'].pct_change()
@@ -222,14 +222,14 @@ print(f"Test MAPE: en moyenne le modèle se trompe de {mape:.2f}% par rapport à
 print(f"Test R2 (mesure statistique de la qualité du modèle (1 = parfait, 0 = nul)): {r2:.4f}")
 
 # Sauvegarde des fichiers
-with open("ltsm_gold_model_rsi.pth", "wb") as f:
-    torch.save(model.state_dict(), f)
+# with open("ltsm_gold_model_rsi.pth", "wb") as f:
+#     torch.save(model.state_dict(), f)
 
-with open("scaler_x_rsi.pkl", "wb") as f:
-    pickle.dump(scaler_X, f)
+# with open("scaler_x_rsi.pkl", "wb") as f:
+#     pickle.dump(scaler_X, f)
 
-with open("scaler_y_rsi.pkl", "wb") as f:
-    pickle.dump(scaler_y, f)
+# with open("scaler_y_rsi.pkl", "wb") as f:
+#     pickle.dump(scaler_y, f)
 
 
 # ---------------------------------------------------------------------
@@ -297,4 +297,13 @@ Epoch 040 | Train loss: 0.001164 | Val loss: 0.001055
 Test RMSE: en moyenne le modèle se trompe de 146.5278 dollars sur la cible.
 Test MAPE: en moyenne le modèle se trompe de 3.65% par rapport à la cible.
 Test R2 (mesure statistique de la qualité du modèle (1 = parfait, 0 = nul)): 0.9369
+
+Epoch 000 | Train loss: 0.035486 | Val loss: 0.182500
+Epoch 010 | Train loss: 0.014197 | Val loss: 0.071470
+Epoch 020 | Train loss: 0.011325 | Val loss: 0.095836
+Epoch 030 | Train loss: 0.008327 | Val loss: 0.045598
+Epoch 040 | Train loss: 0.001171 | Val loss: 0.001083
+Test RMSE: en moyenne le modèle se trompe de 148.9133 dollars sur la cible.
+Test MAPE: en moyenne le modèle se trompe de 3.77% par rapport à la cible.
+Test R2 (mesure statistique de la qualité du modèle (1 = parfait, 0 = nul)): 0.9348
 """
