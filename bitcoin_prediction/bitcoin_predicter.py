@@ -297,3 +297,21 @@ if __name__ == "__main__":
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.tight_layout()
     plt.show()
+
+
+"""
+Epoch 1/10 - Train loss: 0.000788
+Epoch 2/10 - Train loss: 0.000584
+Epoch 3/10 - Train loss: 0.000558
+Epoch 4/10 - Train loss: 0.000547
+Epoch 5/10 - Train loss: 0.000533
+Epoch 6/10 - Train loss: 0.000530
+Epoch 7/10 - Train loss: 0.000530
+Epoch 8/10 - Train loss: 0.000524
+Epoch 9/10 - Train loss: 0.000521
+Epoch 10/10 - Train loss: 0.000518
+2025-11-05 23:09:17.823779 : Évaluation du modèle.
+Test RMSE : 19490.6591 dollars en moyenne d'erreur.
+Test MAPE : 15.02% d'erreur moyenne relative.
+Test R²   : 0.6184 (1 = parfait, 0 = nul).
+"""
