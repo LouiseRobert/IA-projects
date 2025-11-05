@@ -17,7 +17,7 @@ if torch.cuda.is_available():
 SEQ_LEN = 20
 
 # Fonction pour calcul de l'inducateur RSI
-def rsi(close_series, window = 14):
+def rsi(close_series, wnd = 14):
     """
     Fonction de calcul du RSI.
 
@@ -29,8 +29,8 @@ def rsi(close_series, window = 14):
     delta = close_series.diff()
 
     # On isole les jours positifs et les jours négatifs
-    gain = (delta.where(delta > 0, 0)).rolling(window).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window).mean()
+    gain = (delta.where(delta > 0, 0)).rolling(window = wnd).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window = wnd).mean()
 
     # ratio
     rs = gain / loss
@@ -51,6 +51,21 @@ def macd(close_series):
     result = ema12 - ema26
 
     return result # renvoie le MACD sous forme de Series
+
+def bollinger_bands(close_series, wnd = 20):
+    """
+    Fonction de calcul du Bollinger bands.
+
+    :@param close_series: pandas.Series, colone des prix de cloture
+    :@param window: Int, Fenetre temporelle du calcul
+    :@return: dict de pandas.Series, Bollinger bands indicateur
+    """
+    rolling_mean = close_series.rolling(window = wnd).mean()
+    rolling_std = close_series.rolling(window = wnd).std()
+    bol_upper = rolling_mean + (rolling_std * 2)
+    bol_lower = rolling_mean - (rolling_std * 2)
+
+    return {'Bollinger_lower' : bol_lower, 'Bollinger_upper' : bol_upper}
 
 
 # ---------------------------------------------------------------------
@@ -103,6 +118,14 @@ datas['MACD'] = macd(datas['Close'].shift(1))
 datas['MACD_signal'] = datas['MACD'].ewm(span=9, adjust=False).mean()
 datas['MACD_hist'] = datas['MACD'] - datas['MACD_signal']
 
+# Bollinger bands
+bol = bollinger_bands(datas['Close'].shift(1))
+datas['Bollinger_lower'] = bol['Bollinger_lower']
+datas['Bollinger_upper'] = bol['Bollinger_upper']
+
+# Ratio de position du prix dans les bandes
+datas['Bollinger_pos'] = (datas['Close'].shift(1) - datas['Bollinger_lower']) / (datas['Bollinger_upper'] - datas['Bollinger_lower'])
+
 # On normalise en pourcentages
 datas['Open_pct'] = datas['Open'].pct_change()
 datas['High_pct'] = datas['High'].pct_change()
@@ -122,7 +145,8 @@ print(datas.tail())
 features = [
     'Open_pct','High_pct','Low_pct','Volume_pct',
     'Return','High_low_diff','Open_close_diff','Volatility',
-    'SMA_5','SMA_10','SMA_20','Volume_MA_5','Close_minus_SMA10', 'RSI', 'MACD', 'MACD_signal', 'MACD_hist'
+    'SMA_5','SMA_10','SMA_20','Volume_MA_5','Close_minus_SMA10', 'RSI', 'MACD', 'MACD_signal', 'MACD_hist',
+    'Bollinger_lower', 'Bollinger_upper', 'Bollinger_pos'
 ]
 
 # Suppose que ta colonne cible s'appelle 'Target' (prix de clôture de J+5)
@@ -198,7 +222,7 @@ model = LSTMModel(n_features).to(device)
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-EPOCHS = 60
+EPOCHS = 50
 for epoch in range(EPOCHS):
     model.train()
 
@@ -240,13 +264,13 @@ print(f"Test MAPE: en moyenne le modèle se trompe de {mape:.2f}% par rapport à
 print(f"Test R2 (mesure statistique de la qualité du modèle (1 = parfait, 0 = nul)): {r2:.4f}")
 
 # Sauvegarde des fichiers
-with open("ltsm_gold_model_macd.pth", "wb") as f:
+with open("ltsm_gold_model_bol.pth", "wb") as f:
     torch.save(model.state_dict(), f)
 
-with open("scaler_x_macd.pkl", "wb") as f:
+with open("scaler_x_bol.pkl", "wb") as f:
     pickle.dump(scaler_X, f)
 
-with open("scaler_y_macd.pkl", "wb") as f:
+with open("scaler_y_bol.pkl", "wb") as f:
     pickle.dump(scaler_y, f)
 
 
