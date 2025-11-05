@@ -5,9 +5,9 @@ import torch.nn as nn
 import pickle
 
 SEQ_LEN = 20  # même longueur qu'à l'entraînement
-SCALER_X = "scaler_x_rsi.pkl"
-SCALER_Y = "scaler_y.pkl"
-MODEL = "ltsm_gold_model_rsi.pth"
+SCALER_X = "scaler_x_macd.pkl"
+SCALER_Y = "scaler_y_macd.pkl"
+MODEL = "ltsm_gold_model_macd.pth"
 
 # Fonction pour calcul de l'inducateur RSI
 def rsi(close_series, window = 14):
@@ -32,6 +32,18 @@ def rsi(close_series, window = 14):
 
     return rsi
 
+def macd(close_series):
+    """
+    Fonction de calcul du MACD
+    :@param close_series: pandas.Series, colone des prix de cloture
+
+    :@return: pandas.Series, Moving Average Convergence Divergence
+    """
+    ema12 = close_series.ewm(span=12, adjust=False).mean()
+    ema26 = close_series.ewm(span=26, adjust=False).mean()
+    result = ema12 - ema26
+
+    return result # renvoie le MACD sous forme de Series
 
 # ---------------------------------------------------------------------
 # 1. Définir le modèle LSTM (même architecture qu'à l'entraînement)
@@ -62,7 +74,7 @@ with open(SCALER_X, "rb") as f:
 with open(SCALER_Y, "rb") as f:
     scaler_y = pickle.load(f)
 
-n_features = 14  # nombre de features que tu as utilisé
+n_features = 17  # nombre de features que tu as utilisé
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 model = LSTMModel(n_features).to(device)
@@ -87,6 +99,9 @@ datas['SMA_10'] = datas['Close'].shift(1).rolling(window=10).mean()
 datas['SMA_20'] = datas['Close'].shift(1).rolling(window=20).mean()
 datas['Volume_MA_5'] = datas['Volume'].rolling(window=5).mean()
 datas['RSI'] = rsi(datas['Close'].shift(1))
+datas['MACD'] = macd(datas['Close'].shift(1))
+datas['MACD_signal'] = datas['MACD'].ewm(span=9, adjust=False).mean()
+datas['MACD_hist'] = datas['MACD'] - datas['MACD_signal']
 datas['Close_minus_SMA10'] = datas['Close'].shift(1) - datas['SMA_10']
 datas['Open_pct'] = datas['Open'].pct_change()
 datas['High_pct'] = datas['High'].pct_change()
@@ -102,13 +117,13 @@ datas = datas.dropna()
 features = [
     'Open_pct','High_pct','Low_pct','Volume_pct',
     'Return','High_low_diff','Open_close_diff','Volatility',
-    'SMA_5','SMA_10','SMA_20','Volume_MA_5','Close_minus_SMA10', 'RSI'
+    'SMA_5','SMA_10','SMA_20','Volume_MA_5','Close_minus_SMA10', 'RSI', 'MACD', 'MACD_signal', 'MACD_hist'
 ]
 
 X = datas[features].values
 X_scaled = scaler_X.transform(X)
 
-print("Last sequence Close values:", datas['Close'].iloc[-SEQ_LEN:].values)
+# print("Last sequence Close values:", datas['Close'].iloc[-SEQ_LEN:].values)
 
 # Créer la dernière séquence
 X_last_seq = X_scaled[-SEQ_LEN:]          # prend les 10 derniers jours
@@ -120,12 +135,12 @@ X_last_seq_t = torch.tensor(X_last_seq, dtype=torch.float32).to(device)
 # ---------------------------------------------------------------------
 with torch.no_grad():
     y_pred_scaled = model(X_last_seq_t).cpu().numpy()
-    print(f"sorie brute du modele : {y_pred_scaled}")
-    print("scaler_y min/max:", scaler_y.data_min_, scaler_y.data_max_)
     y_pred = scaler_y.inverse_transform(y_pred_scaled)
 
 print(f"Prix prédit de l'or dans 5 jours : {y_pred[0,0]:.2f} dollars")
 
 """
 Prix prédit de l'or dans 5 jours : 3863.78 dollars
+
+Prix prédit de l'or dans 5 jours : 3960.66 dollars
 """

@@ -39,6 +39,20 @@ def rsi(close_series, window = 14):
 
     return rsi
 
+def macd(close_series):
+    """
+    Fonction de calcul du MACD
+    :@param close_series: pandas.Series, colone des prix de cloture
+
+    :@return: pandas.Series, Moving Average Convergence Divergence
+    """
+    ema12 = close_series.ewm(span=12, adjust=False).mean()
+    ema26 = close_series.ewm(span=26, adjust=False).mean()
+    result = ema12 - ema26
+
+    return result # renvoie le MACD sous forme de Series
+
+
 # ---------------------------------------------------------------------
 # 1. Chargement et préparation des données
 # ---------------------------------------------------------------------
@@ -85,6 +99,10 @@ datas['Close_minus_SMA10'] = datas['Close'].shift(1) - datas['SMA_10']
 
 datas['RSI'] = rsi(datas['Close'].shift(1))
 
+datas['MACD'] = macd(datas['Close'].shift(1))
+datas['MACD_signal'] = datas['MACD'].ewm(span=9, adjust=False).mean()
+datas['MACD_hist'] = datas['MACD'] - datas['MACD_signal']
+
 # On normalise en pourcentages
 datas['Open_pct'] = datas['Open'].pct_change()
 datas['High_pct'] = datas['High'].pct_change()
@@ -104,7 +122,7 @@ print(datas.tail())
 features = [
     'Open_pct','High_pct','Low_pct','Volume_pct',
     'Return','High_low_diff','Open_close_diff','Volatility',
-    'SMA_5','SMA_10','SMA_20','Volume_MA_5','Close_minus_SMA10', 'RSI'
+    'SMA_5','SMA_10','SMA_20','Volume_MA_5','Close_minus_SMA10', 'RSI', 'MACD', 'MACD_signal', 'MACD_hist'
 ]
 
 # Suppose que ta colonne cible s'appelle 'Target' (prix de clôture de J+5)
@@ -180,7 +198,7 @@ model = LSTMModel(n_features).to(device)
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-EPOCHS = 50
+EPOCHS = 60
 for epoch in range(EPOCHS):
     model.train()
 
@@ -222,14 +240,14 @@ print(f"Test MAPE: en moyenne le modèle se trompe de {mape:.2f}% par rapport à
 print(f"Test R2 (mesure statistique de la qualité du modèle (1 = parfait, 0 = nul)): {r2:.4f}")
 
 # Sauvegarde des fichiers
-# with open("ltsm_gold_model_rsi.pth", "wb") as f:
-#     torch.save(model.state_dict(), f)
+with open("ltsm_gold_model_macd.pth", "wb") as f:
+    torch.save(model.state_dict(), f)
 
-# with open("scaler_x_rsi.pkl", "wb") as f:
-#     pickle.dump(scaler_X, f)
+with open("scaler_x_macd.pkl", "wb") as f:
+    pickle.dump(scaler_X, f)
 
-# with open("scaler_y_rsi.pkl", "wb") as f:
-#     pickle.dump(scaler_y, f)
+with open("scaler_y_macd.pkl", "wb") as f:
+    pickle.dump(scaler_y, f)
 
 
 # ---------------------------------------------------------------------
