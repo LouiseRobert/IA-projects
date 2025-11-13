@@ -42,9 +42,9 @@ max = 20
 
 $$ x' = {(x - \mu)\over \alpha} $$
 
-où 
-mu = moyenne
-a = écart-type
+où   
+$\mu$ = moyenne  
+$\alpha$ = écart-type  
 
 - Donne une variable centrée sur 0 et avec une dispersion (écart-type) de 1
 
