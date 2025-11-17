@@ -1,6 +1,6 @@
 # Pourquoi les séries temporelles sont spéciales
 
-Dataset classique: les lignes sont indépendantes
+Dataset classique: les lignes sont indépendantes    
 Dataset temporel: la valeur du jour t dépend de t-1 etc.
 
 On ne mélange pas un dataset temporel.
@@ -8,14 +8,14 @@ On ne mélange pas un dataset temporel.
 # Structure
 
 ex: 
-|jour|prix|
-----------
-|0|100|
-|1|102|
-|2|101|
-|3|108|
-|4|110|
-|5|115|
+| jour | prix |
+|--------|----------|
+| 0 | 100 |  
+| 1 | 102 |  
+| 2 | 101 |  
+| 3 | 108 |  
+| 4 | 110 |  
+| 5 | 115 |  
 
 Un réseau de neurones ne peut pas travailler lignes par ligne. Il a besoin d'avoir les informations de x lignes en entrée. => des **séquences**
 
@@ -32,9 +32,9 @@ On prend 3 points en entée et on prédit le point suivant. C'est le sliding win
 ## 1. Séparer train/validation/test
 Tout ce qui est futur ne doit jamais être visible durant l'entrainement.
 
-70% pour l'entrainement
-20% pour la validation 
-10% pour les tests
+70% pour l'entrainement   
+20% pour la validation    
+10% pour les tests  
 
 ```
 train_size = int(len(data) * 0.7)
@@ -55,7 +55,7 @@ Target : 110
 Entrée : [101, 108, 110]
 Target : 115
 
-Attention de créer les windows **après** la séparation entrainement/validation.
+Attention de créer les windows **après** la séparation entrainement/validation.    
 Car une séquence pourrait se retrouver dans le dataset d'entrainement mais contenir des informations de la validation. Ca constituerait de la fuite de données.
 
 ```
