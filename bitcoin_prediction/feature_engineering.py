@@ -73,6 +73,45 @@ if __name__ == "__main__":
     # 2025-11-04 22:00:00  100199.0  345.298771   1.042925
     # 2025-11-04 23:00:00  101266.0   96.336257   0.356487
 
+    # On doit calculer le RSI avant de normaliser Open
+    # Fonction pour calcul de l'inducateur RSI
+    def rsi(price_series, wnd = 14):
+        """
+        Fonction de calcul du RSI.
+
+        :@param close_series: pandas.Series, colone des prix de cloture
+        :@param window: Int, Fenetre temporelle du calcul
+        :@return: pandas.Series, Relative Strength Index
+        """
+        # calcule la différence d'un jour à l'autre
+        delta = price_series.diff()
+
+        # On isole les jours positifs et les jours négatifs
+        gain = (delta.where(delta > 0, 0)).rolling(window = wnd).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window = wnd).mean()
+
+        # ratio
+        rs = gain / loss
+
+        rsi = 100 - (100 / (1 + rs))
+
+        return rsi
+    
+    df["RSI_13"] = rsi(df["Open"], wnd=13)
+
+    # On calcule le rendement du logarithme des prix (Je ne comprends pas)
+    df["log_return"] = np.log(df["Open"]).diff()
+
+    # avec ça on peut calculer les volatilités glissantes sur 5h et 23h
+    df["volatilite_5"] = df["log_return"].rolling(5).std()
+    df["volatilite_23"] = df["log_return"].rolling(23).std()
+
+    # On peut aussi calculer le momentum sur ce rendement
+    df["momentum_lr_5"] = df["log_return"].rolling(5).sum()
+
+
+    # On peut normaliser Open
+
     print(f"{datetime.now()} : Normalisation de la colonne Open.")
 
     # On applique le Min-Max à la colonne Open
@@ -98,9 +137,9 @@ if __name__ == "__main__":
     print(f"{datetime.now()} : Normalisation de la colonne Volume.")
     
     # On applique la normalisation z-score à la colonne Volume
-    zscore = StandardScaler()
+    zscore_volume = StandardScaler()
 
-    df['Volume'] = zscore.fit_transform(df[['Volume']])
+    df['Volume'] = zscore_volume.fit_transform(df[['Volume']])
 
     print(df.tail())
 
@@ -111,3 +150,32 @@ if __name__ == "__main__":
     # 2025-11-04 21:00:00  0.798612  0.232677  -0.436937
     # 2025-11-04 22:00:00  0.794631  0.064792   1.042925
     # 2025-11-04 23:00:00  0.803093 -0.375256   0.356487
+
+    # Maintenant il faudrait ajouter des features à haute valeur ajoutée pour un modèle
+    # On peut commencer par des moyennes mobiles, puis ajouter un calcul de RSI.
+
+    # On crée une moyenne mobile des prix Open des 5 dernières heures
+    df["MA_5"]  = df["Open"].rolling(5).mean()
+
+    # On crée une moyenne mobile de la variation horaire des 23 dernières heures (journée glissante)
+    df["MA_var_23"] = df["Variation"].rolling(23).mean()
+
+    print(df.tail())
+
+    #                          Open    Volume  Variation     RSI_13      MA_5  MA_var_23
+    # Timestamp
+    # 2025-11-04 19:00:00  0.803410 -0.024385  -0.830158  30.311343  0.812364  -0.255248
+    # 2025-11-04 20:00:00  0.796724  0.368422   0.236903  21.650575  0.805997  -0.254938
+    # 2025-11-04 21:00:00  0.798612  0.232677  -0.436937  25.006668  0.802122  -0.257418
+    # 2025-11-04 22:00:00  0.794631  0.064792   1.042925  24.854189  0.798959  -0.215626
+    # 2025-11-04 23:00:00  0.803093 -0.375256   0.356487  34.965534  0.799294  -0.195638
+
+    print(f"{datetime.now()} : Normalisation de la colonne Variation.")
+
+    zscore_variation = StandardScaler()
+
+    df['Variation'] = zscore_variation.fit_transform(df[['Variation']])
+
+    print(df.tail())
+
+    
